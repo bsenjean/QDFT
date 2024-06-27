@@ -3,7 +3,7 @@ Quantum Density Functional Theory: a quantum algorithm to solve the Kohn-Sham se
 
 
 # Whats new
-The Code is upgraded to adopt QISKIT V 0.1.0.
+The Code is upgraded to adopt QISKIT V 1.1.0.
 
 Few modulus are removed from qiskit. (Check https://docs.quantum.ibm.com/api/migration-guides/qiskit-1.0 for more details).
 
