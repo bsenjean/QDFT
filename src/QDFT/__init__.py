@@ -3,6 +3,7 @@
 from .geometry import Hchain_geometry
 
 from .operators import (
+  decompose_operator_to_pauli_list,
   transformation_Hmatrix_Hqubit,
   sz_operator,
   s2_operator)

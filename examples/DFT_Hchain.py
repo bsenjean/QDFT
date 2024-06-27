@@ -6,7 +6,7 @@ import psi4
 
 #psi4.set_memory('30 GB')
 
-working_directory = os.getenv('QDFT_DIR') + "/examples/"
+working_directory = os.getenv('HOME') + "/examples/"
 
 #===========================================================#
 #=============== Initialization by the user ================#
@@ -21,7 +21,7 @@ n_hydrogens = 4
 n_elec      = n_hydrogens
 n_occ       = n_elec//2
 #interdist_list = [0.7,0.8,0.9,1.0,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2.0,2.1,2.2,2.3,2.4,2.5,2.6,2.7,2.8,2.9,3.0]
-interdist_list = [4.0]
+interdist_list = [1.4]
 
 #===========================================================#
 #=============== End of the initialization =================#
@@ -34,7 +34,7 @@ for R in interdist_list:
 
     psi4.core.clean()
     # Define the geometry
-    psi4.core.set_output_file(working_directory + "results/H{}_R{}_{}_{}_Psi4.dat".format(n_hydrogens,R,basis,functional),True)
+    psi4.core.set_output_file(working_directory + "/results/H{}_R{}_{}_{}_Psi4.dat".format(n_hydrogens,R,basis,functional),True)
     string_geo  = "0 1\n"
     for d in range(n_hydrogens//2):
       string_geo += "H 0. 0. {}\n".format(- (R/2. + d*R))

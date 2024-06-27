@@ -1,0 +1,12 @@
+\documentclass[border=2px]{standalone}
+
+\usepackage[braket, qm]{qcircuit}
+\usepackage{graphicx}
+
+\begin{document}
+\scalebox{1.0}{
+\Qcircuit @C=1.0em @R=0.2em @!R { \\
+	 	\nghost{{q}_{0} :  } & \lstick{{q}_{0} :  } & \gate{\mathrm{R_Y}\,(\mathrm{{\ensuremath{\theta}}[0]})} \barrier[0em]{1} & \qw & \ctrl{1} \barrier[0em]{1} & \qw & \gate{\mathrm{R_Y}\,(\mathrm{{\ensuremath{\theta}}[2]})} \barrier[0em]{1} & \qw & \ctrl{1} \barrier[0em]{1} & \qw & \gate{\mathrm{R_Y}\,(\mathrm{{\ensuremath{\theta}}[4]})} & \qw & \qw\\
+	 	\nghost{{q}_{1} :  } & \lstick{{q}_{1} :  } & \gate{\mathrm{R_Y}\,(\mathrm{{\ensuremath{\theta}}[1]})} & \qw & \targ & \qw & \gate{\mathrm{R_Y}\,(\mathrm{{\ensuremath{\theta}}[3]})} & \qw & \targ & \qw & \gate{\mathrm{R_Y}\,(\mathrm{{\ensuremath{\theta}}[5]})} & \qw & \qw\\
+\\ }}
+\end{document}
