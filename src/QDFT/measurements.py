@@ -1,10 +1,12 @@
 import numpy as np
 import math
-from qiskit.opflow import StateFn
-from qiskit.quantum_info import Statevector
+from qiskit.quantum_info import Statevector, Operator
+from qiskit.circuit.library import TwoLocal
 from qiskit import transpile
 from qiskit.circuit.library import MCMT
+from qiskit import QuantumCircuit
 import sys
+
 
 def list_of_ones(computational_basis_state: int, n_qubits):
     """
@@ -16,25 +18,52 @@ def list_of_ones(computational_basis_state: int, n_qubits):
 
     return [abs(j-n_qubits+1) for j in range(len(bitstring)) if bitstring[j] == '1']
 
+
+def circuits(n_occ: int, n_qubits: int, rotation_blocks: str, entanglement_blocks: str, entanglement: str, n_blocks: int):
+    '''Circuit implementation'''
+    from qiskit.visualization import circuit_drawer
+
+    initial_circuits = []
+    for i in range(n_occ): initial_circuits += [QuantumCircuit(n_qubits)]
+
+    for state in range(n_occ):  # binarystring representation of the integer
+        for i in list_of_ones(state, n_qubits):
+            initial_circuits[state].x(i)
+
+    circuits = [TwoLocal(n_qubits, rotation_blocks, entanglement_blocks, entanglement, n_blocks, insert_barriers=True,
+                         initial_state=initial_circuits[state]) for state in range(n_occ)]
+    n_param = circuits[0].num_parameters
+    param_values = np.zeros(n_param)
+    print(circuits[0].decompose())
+    circuit_drawer(circuits[0].decompose(), scale=None, filename="circuit", style=None, output="latex_source",
+                   interactive=True, plot_barriers=True, reverse_bits=False, justify=None,
+                   vertical_compression='medium',
+                   idle_wires=True, with_layout=True, fold=None, ax=None, initial_state=False, cregbundle=True)
+    return circuits, param_values, n_param
+
+
 def cost_function_energy(param_values,circuits,H_qubit,weights,simulation,nshots=False,backend=False,output=False):
 
     nstates = len(weights)
     E_SA = 0.
 
-    bounds = [circuits[state].bind_parameters(param_values) for state in range(nstates)]
-    if nshots is not False:
-       energies = [sampled_expectation_value(bounds[state],H_qubit,backend,simulation,nshots=nshots) for state in range(nstates)]
-    else:
-       energies = [np.real((StateFn(H_qubit, is_measurement=True) @ StateFn(bounds[state])).eval()) for state in range(nstates)]
+    bounds = [circuits[state].assign_parameters(param_values) for state in range(nstates)]
 
+
+    if nshots is not False:
+        energies = [sampled_expectation_value(bounds[state],H_qubit,backend,simulation,nshots=nshots) for state in range(nstates)]
+    else:
+        opp = Operator(H_qubit)
+        energies = [np.real(Statevector.from_instruction(bounds[state]).expectation_value(opp)) for state in range(nstates)]
     # Compute the state-averaged energy
     E_SA = 0.
     for i in range(nstates): E_SA += energies[i] * weights[i]
 
     if output is not False:
-      with open(output,'a') as f: f.write('{}\n'.format(E_SA))
+        with open(output,'a') as f: f.write('{}\n'.format(E_SA))
 
     return E_SA
+
 
 def Grover_diffusion_circuit(circuit,n_qubits):
     """ Construct the Grover diffusion operator circuit.
@@ -46,14 +75,15 @@ def Grover_diffusion_circuit(circuit,n_qubits):
 
     circuit_Grover = circuit.copy()
     for i in range(n_qubits):
-      circuit_Grover.h(i)
-      circuit_Grover.x(i)
+        circuit_Grover.h(i)
+        circuit_Grover.x(i)
     circuit_Grover += MCMT('z',n_qubits-1,1)
     for i in range(n_qubits):
-      circuit_Grover.x(i)
-      circuit_Grover.h(i)
+        circuit_Grover.x(i)
+        circuit_Grover.h(i)
 
     return circuit_Grover
+
 
 def sampled_state(original_circuit,n_qubits,simulation,backend=False,nshots=1024):
 
@@ -61,56 +91,56 @@ def sampled_state(original_circuit,n_qubits,simulation,backend=False,nshots=1024
     circuit = original_circuit.copy()
     circuit_Grover = Grover_diffusion_circuit(original_circuit,n_qubits)
     if simulation == "noiseless":
-      state = np.array(Statevector(circuit))
-      state_Grover = np.array(Statevector(circuit_Grover))
-      # Compute the proba of getting a given bitstring, based on a given distribution defined by the number of shots.
-      proba_state_array = np.random.multinomial(nshots,(np.abs(state)**2).real)
-      proba_state_Grover_array = np.random.multinomial(nshots,(np.abs(state_Grover)**2).real)
-      proba_state = {}
-      proba_state_Grover = {}
-      for indice in range(len(proba_state_array)):
-          if proba_state_array[indice] >= 1:
-             proba_state[str(indice)] = proba_state_array[indice]/nshots
-          if proba_state_Grover_array[indice] >= 1:
-             proba_state_Grover[str(indice)] = proba_state_Grover_array[indice]/nshots
+        state = np.array(Statevector(circuit))
+        state_Grover = np.array(Statevector(circuit_Grover))
+        # Compute the proba of getting a given bitstring, based on a given distribution defined by the number of shots.
+        proba_state_array = np.random.multinomial(nshots,(np.abs(state)**2).real)
+        proba_state_Grover_array = np.random.multinomial(nshots,(np.abs(state_Grover)**2).real)
+        proba_state = {}
+        proba_state_Grover = {}
+        for indice in range(len(proba_state_array)):
+            if proba_state_array[indice] >= 1:
+                proba_state[str(indice)] = proba_state_array[indice]/nshots
+            if proba_state_Grover_array[indice] >= 1:
+                proba_state_Grover[str(indice)] = proba_state_Grover_array[indice]/nshots
 
     elif simulation == "noisy":
-      circuit.measure_all()
-      circuit_Grover.measure_all()
-      # Transpile for simulator
-      circuit = transpile(circuit, backend)
-      circuit_Grover = transpile(circuit_Grover, backend)
-      # Run and get counts
-      result = backend.run(circuit,shots=nshots).result()
-      counts = result.get_counts(circuit) # The string is little-endian (cr[0] on the right hand side).
-      # transform the dictionary with binary to integer:
-      proba_state = {}
-      for item in counts.items():
-        proba_state[str(int(item[0],2))] = item[1]/nshots
-      # Run and get counts
-      result = backend.run(circuit_Grover,shots=nshots).result()
-      counts = result.get_counts(circuit_Grover) # The string is little-endian (cr[0] on the right hand side).
-      # transform the dictionary with binary to integer:
-      proba_state_Grover = {}
-      for item in counts.items():
-        proba_state_Grover[str(int(item[0],2))] = item[1]/nshots
+        circuit.measure_all()
+        circuit_Grover.measure_all()
+        # Transpile for simulator
+        circuit = transpile(circuit, backend)
+        circuit_Grover = transpile(circuit_Grover, backend)
+        # Run and get counts
+        result = backend.run(circuit,shots=nshots).result()
+        counts = result.get_counts(circuit) # The string is little-endian (cr[0] on the right hand side).
+        # transform the dictionary with binary to integer:
+        proba_state = {}
+        for item in counts.items():
+            proba_state[str(int(item[0],2))] = item[1]/nshots
+        # Run and get counts
+        result = backend.run(circuit_Grover,shots=nshots).result()
+        counts = result.get_counts(circuit_Grover) # The string is little-endian (cr[0] on the right hand side).
+        # transform the dictionary with binary to integer:
+        proba_state_Grover = {}
+        for item in counts.items():
+            proba_state_Grover[str(int(item[0],2))] = item[1]/nshots
 
     else:
-      sys.exit("Simulation argument '{}' does not exist".format(simulation))
+        sys.exit("Simulation argument '{}' does not exist".format(simulation))
 
     # combine dictionnaries to have the same keys:
     combine_dict = proba_state | proba_state_Grover
     for key in combine_dict.keys():
-      if key not in proba_state: proba_state[key] = 0
-      if key not in proba_state_Grover: proba_state_Grover[key] = 0
+        if key not in proba_state: proba_state[key] = 0
+        if key not in proba_state_Grover: proba_state_Grover[key] = 0
 
     # Find the 4 different values of mean of the coefficients:
     mean_Grover = []
     for key in combine_dict:
-      mean_Grover.append(abs(0.5*( np.sqrt(proba_state[key]) + np.sqrt(proba_state_Grover[key]))))
-      mean_Grover.append(abs(0.5*(-np.sqrt(proba_state[key]) - np.sqrt(proba_state_Grover[key]))))
-      mean_Grover.append(abs(0.5*( np.sqrt(proba_state[key]) - np.sqrt(proba_state_Grover[key]))))
-      mean_Grover.append(abs(0.5*(-np.sqrt(proba_state[key]) + np.sqrt(proba_state_Grover[key]))))
+        mean_Grover.append(abs(0.5*( np.sqrt(proba_state[key]) + np.sqrt(proba_state_Grover[key]))))
+        mean_Grover.append(abs(0.5*(-np.sqrt(proba_state[key]) - np.sqrt(proba_state_Grover[key]))))
+        mean_Grover.append(abs(0.5*( np.sqrt(proba_state[key]) - np.sqrt(proba_state_Grover[key]))))
+        mean_Grover.append(abs(0.5*(-np.sqrt(proba_state[key]) + np.sqrt(proba_state_Grover[key]))))
 
     # Example usage:
     around = math.floor(math.log(np.sqrt(nshots), 10)) + 1
@@ -120,22 +150,23 @@ def sampled_state(original_circuit,n_qubits,simulation,backend=False,nshots=1024
 
     coefficients = []
     for i in range(2**n_qubits):
-      key = str(i)
-      if key in combine_dict:      
-        coefficients.append(( proba_state[key] + 4*chosen_one**2 - proba_state_Grover[key]) / (4*chosen_one))
-      else:
-        coefficients.append(0)
+        key = str(i)
+        if key in combine_dict:
+            coefficients.append(( proba_state[key] + 4*chosen_one**2 - proba_state_Grover[key]) / (4*chosen_one))
+        else:
+            coefficients.append(0)
 
     return coefficients/np.linalg.norm(coefficients)
+
 
 def sampled_expectation_value(original_circuit,operator,backend,simulation,nshots=1024):
     rot_dic = { 'X' : lambda qubit : circuit.h(qubit),
                 'Y' : lambda qubit : circuit.rx(np.pi/2., qubit)}
 
     try:
-     nterms = len(operator)
+        nterms = len(operator)
     except:
-     nterms = 1
+        nterms = 1
     nqubits = operator.num_qubits
     nshots_per_pauli = int(nshots/nterms)
     expectation_value = 0
@@ -151,49 +182,49 @@ def sampled_expectation_value(original_circuit,operator,backend,simulation,nshot
             # str(operator[i].to_pauli_op().primitive[0]) = "I" and
             # str(operator[i].to_pauli_op().primitive[2]) = "Z".............. 
             # This messed up so much with my brain.
-            if str(operator[i].to_pauli_op().primitive[j]) == 'I':
+            if str(operator[i].paulis).strip("''[]")[j] == 'I':
                 continue
-            elif str(operator[i].to_pauli_op().primitive[j]) == 'Z':
+            elif str(operator[i].paulis).strip("''[]")[j] == 'Z':
                 list_Z.append(j)
             else:
-                rot_dic[str(operator[i].to_pauli_op().primitive[j])](j)
+                rot_dic[(str(operator[i].paulis).strip("''[]"))[j]](j)
                 list_Z.append(j)
 
         # Get the final state of the rotated circuit:
         if simulation == "noiseless":
-          state = np.array(Statevector(circuit))
-          # Compute the proba of getting a given bitstring, based on a given distribution defined by the number of shots.
-          proba_computational_basis_array = np.random.multinomial(nshots_per_pauli,(np.abs(state)**2).real)
-          proba_computational_basis = {}
-          for indice in range(len(proba_computational_basis_array)):
-              if proba_computational_basis_array[indice] >= 1:
-                 proba_computational_basis[str(indice)] = proba_computational_basis_array[indice]/nshots_per_pauli
+            state = np.array(Statevector(circuit))
+            # Compute the proba of getting a given bitstring, based on a given distribution defined by the number of shots.
+            proba_computational_basis_array = np.random.multinomial(nshots_per_pauli,(np.abs(state)**2).real)
+            proba_computational_basis = {}
+            for indice in range(len(proba_computational_basis_array)):
+                if proba_computational_basis_array[indice] >= 1:
+                    proba_computational_basis[str(indice)] = proba_computational_basis_array[indice]/nshots_per_pauli
 
         elif simulation == "noisy": # if noisy, we cannot get the state directly, we have to combine the measurements to extract the energy.
-          circuit.measure_all()
-          # Transpile for simulator
-          circuit = transpile(circuit, backend)
-          # Run and get counts
-          result = backend.run(circuit,shots=nshots_per_pauli).result()
-          counts = result.get_counts(circuit) # The string is little-endian (cr[0] on the right hand side).
-          # transform the dictionary with binary to integer:
-          proba_computational_basis = {}
-          for item in counts.items():
-            proba_computational_basis[str(int(item[0],2))] = item[1]/nshots_per_pauli
+            circuit.measure_all()
+            # Transpile for simulator
+            circuit = transpile(circuit, backend)
+            # Run and get counts
+            result = backend.run(circuit,shots=nshots_per_pauli).result()
+            counts = result.get_counts(circuit) # The string is little-endian (cr[0] on the right hand side).
+            # transform the dictionary with binary to integer:
+            proba_computational_basis = {}
+            for item in counts.items():
+                proba_computational_basis[str(int(item[0],2))] = item[1]/nshots_per_pauli
 
         else:
-          sys.exit("Simulation argument '{}' does not exist".format(simulation))
+            sys.exit("Simulation argument '{}' does not exist".format(simulation))
 
         # Compute the energy by combining the proba:
         for integer_bitstring in range(2**nqubits):
-          if str(integer_bitstring) in proba_computational_basis:
-            phase = 1
-            # Determine the phase:
-            for qubit in list_Z:
-              if qubit in list_of_ones(integer_bitstring,nqubits):
-                phase *= -1
+            if str(integer_bitstring) in proba_computational_basis:
+                phase = 1
+                # Determine the phase:
+                for qubit in list_Z:
+                    if qubit in list_of_ones(integer_bitstring,nqubits):
+                        phase *= -1
 
             # Determine the expectation value:
-            expectation_value += phase * proba_computational_basis[str(integer_bitstring)] * operator[i].to_pauli_op().coeff
+                expectation_value += phase * proba_computational_basis[str(integer_bitstring)] * np.real(operator[i].coeffs.real[0])
 
     return expectation_value
