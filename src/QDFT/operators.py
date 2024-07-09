@@ -3,73 +3,50 @@ from qiskit_nature.second_q.operators import FermionicOp
 import numpy as np
 
 '''decompose operator to pauli'''
-# Example numpy ndarray representing an operator
-operator_matrix = np.array([[1.+0.j, 0.+0.j, 0.+0.j, 0.+0.j],
-                            [0.+0.j, 0.+0.j, 0.+0.j, 0.+0.j],
-                            [0.+0.j, 0.+0.j, 0.+0.j, 0.+0.j],
-                            [0.+0.j, 0.+0.j, 0.+0.j, 0.+0.j]])
-
-# Define Pauli matrices and the identity matrix
-II = Pauli('II')
-IX = Pauli('IX')
-IY = Pauli('IY')
-IZ = Pauli('IZ')
-XI = Pauli('XI')
-XX = Pauli('XX')
-XY = Pauli('XY')
-XZ = Pauli('XZ')
-YI = Pauli('YI')
-YX = Pauli('YX')
-YY = Pauli('YY')
-YZ = Pauli('YZ')
-ZI = Pauli('ZI')
-ZX = Pauli('ZX')
-ZY = Pauli('ZY')
-ZZ = Pauli('ZZ')
-
-# Map Pauli matrices to their corresponding ndarray representation
-pauli_to_matrix = {
-    'II': np.kron(np.eye(2), np.eye(2)),
-    'IX': np.kron(np.eye(2), np.array([[0, 1], [1, 0]])),
-    'IY': np.kron(np.eye(2), np.array([[0, -1j], [1j, 0]])),
-    'IZ': np.kron(np.eye(2), np.array([[1, 0], [0, -1]])),
-    'XI': np.kron(np.array([[0, 1], [1, 0]]), np.eye(2)),
-    'XX': np.kron(np.array([[0, 1], [1, 0]]), np.array([[0, 1], [1, 0]])),
-    'XY': np.kron(np.array([[0, 1], [1, 0]]), np.array([[0, -1j], [1j, 0]])),
-    'XZ': np.kron(np.array([[0, 1], [1, 0]]), np.array([[1, 0], [0, -1]])),
-    'YI': np.kron(np.array([[0, -1j], [1j, 0]]), np.eye(2)),
-    'YX': np.kron(np.array([[0, -1j], [1j, 0]]), np.array([[0, 1], [1, 0]])),
-    'YY': np.kron(np.array([[0, -1j], [1j, 0]]), np.array([[0, -1j], [1j, 0]])),
-    'YZ': np.kron(np.array([[0, -1j], [1j, 0]]), np.array([[1, 0], [0, -1]])),
-    'ZI': np.kron(np.array([[1, 0], [0, -1]]), np.eye(2)),
-    'ZX': np.kron(np.array([[1, 0], [0, -1]]), np.array([[0, 1], [1, 0]])),
-    'ZY': np.kron(np.array([[1, 0], [0, -1]]), np.array([[0, -1j], [1j, 0]])),
-    'ZZ': np.kron(np.array([[1, 0], [0, -1]]), np.array([[1, 0], [0, -1]])),
+pauli_matrices = {
+    'I': np.array([[1, 0], [0, 1]]),
+    'X': np.array([[0, 1], [1, 0]]),
+    'Y': np.array([[0, -1j], [1j, 0]]),
+    'Z': np.array([[1, 0], [0, -1]]),
 }
 
+# Generate all tensor products of Pauli matrices for n qubits
+def generate_pauli_strings(n):
+    from itertools import product
+    labels = ['I', 'X', 'Y', 'Z']
+    pauli_strings = [''.join(p) for p in product(labels, repeat=n)]
+    return pauli_strings
 
-# Function to decompose operator into Pauli strings
+
+# Create a dictionary to map Pauli labels to their ndarray representations
+def create_pauli_to_matrix(n):
+    pauli_strings = generate_pauli_strings(n)
+    pauli_to_matrix = {}
+    for label in pauli_strings:
+        matrix = pauli_matrices[label[0]]
+        for char in label[1:]:
+            matrix = np.kron(matrix, pauli_matrices[char])
+        pauli_to_matrix[label] = matrix
+    return pauli_to_matrix
+
+
+# Function to decompose an operator into Pauli strings
 def decompose_operator_to_pauli_list(operator):
-
+    nqubits = int(np.log2(operator.dim[0]))  # Number of qubits
+    pauli_to_matrix = create_pauli_to_matrix(nqubits)
     pauli_list = {}
-
-    # Get the dimension of the operator
     dim = operator.dim[0]
 
     # Iterate over all possible Pauli matrices
     for pauli_str, pauli_matrix in pauli_to_matrix.items():
-        # Apply the Pauli matrix to the operator and compute the expectation value
         coeff = np.trace(np.dot(operator.data, pauli_matrix)) / dim
 
         # Check if coefficient is non-zero
-        if np.abs(coeff) > 1e-10:  # Adjust threshold as needed
-            if pauli_str in pauli_list:
-                pauli_list[pauli_str] += coeff
-            else:
-                pauli_list[pauli_str] = coeff
+        if np.abs(coeff) > 1e-10:
+            pauli_list[pauli_str] = pauli_list.get(pauli_str, 0) + coeff
 
+    # Convert to a list of tuples (Pauli object, coefficient)
     pauli_list = [(Pauli(pauli_str), coeff) for pauli_str, coeff in pauli_list.items()]
-
     return pauli_list
 
 
