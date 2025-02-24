@@ -16,12 +16,12 @@ functional  = "SVWN"
 basis       = "sto-3g"
 E_conv      = 1e-9
 D_conv      = 1e-6
-SCF_maxiter = 100
-n_hydrogens = 4
+SCF_maxiter = 20
+n_hydrogens = 16
 n_elec      = n_hydrogens
 n_occ       = n_elec//2
 #interdist_list = [0.7,0.8,0.9,1.0,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2.0,2.1,2.2,2.3,2.4,2.5,2.6,2.7,2.8,2.9,3.0]
-interdist_list = [4.0]
+interdist_list = [2.7]
 
 #===========================================================#
 #=============== End of the initialization =================#
@@ -74,6 +74,7 @@ for R in interdist_list:
     SAD.set_atomic_fit_bases(sad_fitting_list)
     SAD.compute_guess();
     D_AO = SAD.Da().clone()
+    D_AO_previous = SAD.Da().clone()
 
     # Initialize the potential object
     V_xc = dft_wfn.Da().clone()
@@ -109,6 +110,7 @@ for R in interdist_list:
 
     # Get the first density matrix after SAD guess:
     F_AO = Hcore.np + 2*J_coulomb + V_xc.np
+
     F_OAO = S_sqrt_inv @ F_AO @ S_sqrt_inv
     eigvals,eigvecs = np.linalg.eigh(F_OAO)
     # Transform back to the AO basis:
@@ -199,11 +201,11 @@ for R in interdist_list:
 
             # Limit size of DIIS vector
             diis_count = len(Fock_list)
-            if diis_count > 6:
-                # Remove oldest vector
-                del Fock_list[0]
-                del DIIS_error[0]
-                diis_count -= 1
+            #if diis_count > 6:
+            #    # Remove oldest vector
+            #    del Fock_list[0]
+            #    del DIIS_error[0]
+            #    diis_count -= 1
 
             # Build error matrix B, [Pulay:1980:393], Eqn. 6, LHS
             B = np.empty((diis_count + 1, diis_count + 1))

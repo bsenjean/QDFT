@@ -4,19 +4,14 @@ import math
 import qiskit.quantum_info
 import scipy
 import QDFT
-from qiskit_aer import Aer
 from qiskit import transpile
 from qiskit import QuantumCircuit, ClassicalRegister
 from qiskit_algorithms.optimizers import SPSA
 from qiskit_algorithms import NumPyEigensolver
 from qiskit.circuit.library import TwoLocal
-from qiskit_aer import QasmSimulator, AerSimulator
-from qiskit_aer.noise import NoiseModel
-from qiskit_ibm_runtime.fake_provider import FakeVigo
 from qiskit.visualization import circuit_drawer
 from qiskit.quantum_info import Statevector, Operator, SparsePauliOp, Pauli, PauliList
 
-sys.path.insert(1, os.path.abspath('/usr/local/psi4/lib/'))
 import psi4
 
 psi4.set_memory('100 GB')
@@ -31,16 +26,18 @@ working_directory = os.getenv('QDFT_DIR')
 nshots = False
 simulation = ["noiseless", "noisy"][0]  # noiseless doesn't mean without sampling noise ! Noisy means a real simulation of a quantum computer.
 Hubbard = False
-n_blocks = 2  # Number of block considered into the Hardware efficient ansatz
+n_blocks = 1  # Number of block considered into the Hardware efficient ansatz
 rotation_blocks = ['ry', 'rz', ['ry', 'rz'], ['rz', 'rx', 'rz']][0]  # rotation gates in the ansatz ### I noticed RyRz works best (3 states optimization for instance, but much longer time...)
 entanglement = ['full', 'linear', 'circular', 'sca'][1]  # the way qubits are entangled in the ansatz
 entanglement_blocks = ['cz', 'cx'][1]  # entanglement gate in the ansatz ## I noticed cz works best (3 states optimization)
+skip_final_rotation_layer = False
 
 # SCF convergence criteria:
 E_conv = 1e-5
 D_conv = 1e-4
-SCF_maxiter = 50
+SCF_maxiter = 20
 slope_SCF = 5  # set to None is not used.
+print_energy = False
 
 # Classical optimizer criteria:
 basinhopping = False
@@ -67,7 +64,7 @@ n_elec = n_orbs
 n_occ = n_orbs // 2
 
 # interdist_list = [0.7,0.8,0.9,1.0,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2.0,2.1,2.2,2.3,2.4,2.5,2.6,2.7,2.8,2.9,3.0]
-interdist_list = [1.2]
+interdist_list = [1.0]
 
 # SA weights:
 weights_choice = ["equi", "decreasing", "equi_periodic", "equi_antiperiodic", "auto"][1]
@@ -75,7 +72,7 @@ weights_choice = ["equi", "decreasing", "equi_periodic", "equi_antiperiodic", "a
 '''Initializing simulation inputs to QDFT'''
 backend, blocking, allowed_increase, weights = QDFT.simulation(simulation, weights_choice, nshots, Hubbard,
                                                                n_elec, n_occ, n_qubits)
-circuits, param_values, n_param = QDFT.circuits(n_occ, n_qubits, rotation_blocks, entanglement_blocks, entanglement, n_blocks)
+circuits, param_values, n_param = QDFT.circuits(n_occ, n_qubits, rotation_blocks, entanglement_blocks, entanglement, n_blocks, skip_final_rotation_layer)
 
 # ========================================================================#
 # ============= START THE ALGORITHM FOR DIFFERENT U VALUES ===============#
@@ -88,7 +85,7 @@ for R in interdist_list:
         working_directory + "examples/results/H{}_R{}_{}_{}_Psi4.dat".format(n_orbs, R, basis, functional), True)
     psi4.geometry(QDFT.Hchain_geometry("linear", n_orbs, R))
 
-    psi4.set_options({'basis': basis, 'scf_type': 'pk'})  # , 'print': 5, 'debug': 1})
+    psi4.set_options({'basis': basis, 'scf_type': 'pk'})#, 'print': 5, 'debug': 1})
     dft_e, dft_wfn = psi4.energy(functional, return_wfn=True)
     # Hcore and J (Coulomb) matrices:
     Hcore = dft_wfn.H().clone()
@@ -214,6 +211,7 @@ for R in interdist_list:
 
         # Build the Fock matrix in the OAO basis:
         F_OAO = S_sqrt_inv @ F_AO @ S_sqrt_inv
+        eigvals_F, eigvecs_F = np.linalg.eigh(F_OAO)
 
         # Map the non-interacting Hamiltonian (Fock matrix) in the OAO basis into Qubit Hamiltonian
         H_qubit, IJ_op_list, full_pauliop_list, full_pauli_list = QDFT.transformation_Hmatrix_Hqubit(F_OAO, n_qubits)
@@ -225,7 +223,8 @@ for R in interdist_list:
         eigvecs = eigvecs_1.data.T
         with open(output_file, 'a') as f:
             f.write("varepsilon exact: {}".format(dft_wfn.epsilon_a().np[:]) + "\n")
-            f.write("varepsilon from diag: {}".format(eigvals[:n_occ]) + "\n")
+            f.write("varepsilon from diag H_qubit: {}".format(eigvals[:n_occ]) + "\n")
+            f.write("varepsilon from diag F_OAO: {}".format(eigvals_F[:n_occ]) + "\n")
             f.write("weights: {}".format(weights) + "\n")
 
         if opt_method == "L-BFGS-B": opt_options = {'maxiter': opt_maxiter, 'ftol': ftol, 'gtol': gtol}
@@ -240,7 +239,8 @@ for R in interdist_list:
                                                       simulation,
                                                       nshots,
                                                       backend,
-                                                      False),
+                                                      False,
+                                                      print_energy),
                                                 method=opt_method,
                                                 options=opt_options)
             else:
@@ -255,7 +255,8 @@ for R in interdist_list:
                                                                                simulation,
                                                                                nshots,
                                                                                backend,
-                                                                               False)})
+                                                                               False,
+                                                                               print_energy)})
             param_values = f_min['x']
             E_SA = f_min['fun']
         else:
@@ -268,7 +269,8 @@ for R in interdist_list:
                                                 simulation,
                                                 nshots,
                                                 backend,
-                                                False))
+                                                False,
+                                                print_energy))
             result = spsa.minimize(cost_function, x0=param_values)
             param_values = result.x
             E_SA = result.fun  # if last_avg is not 1, it returns the callable function with the last_avg param_values as input ! This seems generally good and better than taking the mean of the last_avg function calls.

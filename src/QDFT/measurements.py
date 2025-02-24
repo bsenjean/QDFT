@@ -19,7 +19,7 @@ def list_of_ones(computational_basis_state: int, n_qubits):
     return [abs(j-n_qubits+1) for j in range(len(bitstring)) if bitstring[j] == '1']
 
 
-def circuits(n_occ: int, n_qubits: int, rotation_blocks: str, entanglement_blocks: str, entanglement: str, n_blocks: int):
+def circuits(n_occ: int, n_qubits: int, rotation_blocks: str, entanglement_blocks: str, entanglement: str, n_blocks: int, skip_final_rotation_layer=False):
     '''Circuit implementation'''
     from qiskit.visualization import circuit_drawer
 
@@ -31,6 +31,7 @@ def circuits(n_occ: int, n_qubits: int, rotation_blocks: str, entanglement_block
             initial_circuits[state].x(i)
 
     circuits = [TwoLocal(n_qubits, rotation_blocks, entanglement_blocks, entanglement, n_blocks, insert_barriers=True,
+                         skip_final_rotation_layer=skip_final_rotation_layer,
                          initial_state=initial_circuits[state]) for state in range(n_occ)]
     n_param = circuits[0].num_parameters
     param_values = np.zeros(n_param)
@@ -42,7 +43,7 @@ def circuits(n_occ: int, n_qubits: int, rotation_blocks: str, entanglement_block
     return circuits, param_values, n_param
 
 
-def cost_function_energy(param_values,circuits,H_qubit,weights,simulation,nshots=False,backend=False,output=False):
+def cost_function_energy(param_values,circuits,H_qubit,weights,simulation,nshots=False,backend=False,output=False,print_energy=False):
 
     nstates = len(weights)
     E_SA = 0.
@@ -61,6 +62,8 @@ def cost_function_energy(param_values,circuits,H_qubit,weights,simulation,nshots
 
     if output is not False:
         with open(output,'a') as f: f.write('{}\n'.format(E_SA))
+
+    if print_energy: print(E_SA)
 
     return E_SA
 

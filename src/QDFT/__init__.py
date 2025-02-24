@@ -26,7 +26,7 @@ def simulation(simulation: str, weights_choice: str, nshots: str or int, Hubbard
     import numpy as np
     from qiskit_aer import QasmSimulator, Aer
     from qiskit_aer.noise import NoiseModel
-    from qiskit_ibm_runtime.fake_provider import FakeVigo
+    from qiskit_ibm_runtime.fake_provider import FakeVigoV2
     import sys
     n_sites = 2 ** n_qubits
     v = np.ndarray
