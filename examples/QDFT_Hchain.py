@@ -64,7 +64,7 @@ n_elec = n_orbs
 n_occ = n_orbs // 2
 
 # interdist_list = [0.7,0.8,0.9,1.0,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2.0,2.1,2.2,2.3,2.4,2.5,2.6,2.7,2.8,2.9,3.0]
-interdist_list = [1.0]
+interdist_list = [1.0,1.0,1.0,1.0,1.0,1.0]
 
 # SA weights:
 weights_choice = ["equi", "decreasing", "equi_periodic", "equi_antiperiodic", "auto"][1]
@@ -77,7 +77,9 @@ circuits, param_values, n_param = QDFT.circuits(n_occ, n_qubits, rotation_blocks
 # ========================================================================#
 # ============= START THE ALGORITHM FOR DIFFERENT U VALUES ===============#
 # ========================================================================#
+it = 0
 for R in interdist_list:
+    it += 1
 
     psi4.core.clean()
     # Define the geometry
@@ -131,8 +133,8 @@ for R in interdist_list:
     mints = psi4.core.MintsHelper(dft_wfn.basisset())
     I = np.asarray(mints.ao_eri())
 
-    output_file = working_directory + "examples/results/H{}_R{}_{}_{}_nshots{}_layer{}_maxiter{}_resampling{}_slopeSPSA{}_slopeSCF{}_{}.dat".format(
-        n_orbs, R, basis, opt_method, nshots, n_blocks, opt_maxiter, resampling, slope_SPSA, slope_SCF, simulation)
+    output_file = working_directory + "examples/results/H{}_R{}_{}_{}_nshots{}_layer{}_maxiter{}_resampling{}_slopeSPSA{}_slopeSCF{}_{}_{}.dat".format(
+        n_orbs, R, basis, opt_method, nshots, n_blocks, opt_maxiter, resampling, slope_SPSA, slope_SCF, simulation, it)
 
     print("*" * 50)
     print("*" + " " * 18 + "R = {:8.3f}".format(R) + " " * 18 + "*")
@@ -166,19 +168,21 @@ for R in interdist_list:
         # DIIS
         diis_e = np.einsum('ij,jk,kl->il', F_AO, D_AO.np, S_AO) - np.einsum('ij,jk,kl->il', S_AO, D_AO.np, F_AO)
         diis_e = S_sqrt_inv @ diis_e @ S_sqrt_inv
-        Fock_list.append(F_AO)
-        DIIS_error.append(diis_e)
+        # skip the SAD one?
+        if SCF_ITER>1: 
+           Fock_list.append(F_AO)
+           DIIS_error.append(diis_e)
         dRMS = np.mean(diis_e ** 2) ** 0.5
-        param_values = param_values + np.random.rand(n_param) / 10000.
+        param_values = param_values# + np.random.rand(n_param) / 10000.
 
-        if SCF_ITER >= 2:
+        if SCF_ITER >= 3:
             # Limit size of DIIS vector
             diis_count = len(Fock_list)
-            if diis_count > 6:
-                # Remove oldest vector
-                del Fock_list[0]
-                del DIIS_error[0]
-                diis_count -= 1
+            #if diis_count > 6:
+            #    # Remove oldest vector
+            #    del Fock_list[0]
+            #    del DIIS_error[0]
+            #    diis_count -= 1
 
             # Build error matrix B, [Pulay:1980:393], Eqn. 6, LHS
             B = np.empty((diis_count + 1, diis_count + 1))
